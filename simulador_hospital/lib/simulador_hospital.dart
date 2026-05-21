@@ -477,16 +477,8 @@ class SimuladorHospital with ChangeNotifier {
     paciente.tiempoFinAtencion = reloj;
     _metricas.pacientesAtendidosUrgencias++;
 
-    if (paciente.triage == NivelTriage.sinUrgenciaAzul) {
-      paciente.tiempoSalida = reloj;
-      paciente.estado = EstadoPaciente.dadoDeAlta;
-      _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);
-      _intentarAsignarMedicoUrgencias();
-      return;
-    }
-
-    EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkov(
-        Config.matrizTransicionUrgencias, EstadoPaciente.enAtencion);
+    EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkovUrgencias(
+        paciente.triage!, EstadoPaciente.enAtencion);
 
     if (siguienteDestino == EstadoPaciente.hospitalizado) {
       paciente.requiereHospitalizacion = true;
@@ -511,12 +503,45 @@ class SimuladorHospital with ChangeNotifier {
     _intentarAsignarMedicoUrgencias();
   }
 
+  /// Evalúa la cadena de Markov basándose en el Triage específico del paciente
+  EstadoPaciente _determinarSiguienteEstadoMarkovUrgencias(
+      NivelTriage triage, EstadoPaciente estadoActual) {
+    // Convertir los enums a string para buscar en el mapa de configuración
+    String claveTriage = triage.toString().split('.').last;
+    String claveEstado = estadoActual.toString().split('.').last;
+
+    if (!Config.matricesMarkovUrgencias.containsKey(claveTriage)) {
+      return EstadoPaciente.dadoDeAlta;
+    }
+
+    final matrizEspecifica = Config.matricesMarkovUrgencias[claveTriage]!;
+
+    if (!matrizEspecifica.containsKey(claveEstado)) {
+      return EstadoPaciente.dadoDeAlta;
+    }
+
+    Map<String, double> transiciones = matrizEspecifica[claveEstado]!;
+    double u = _rng.siguiente();
+    double probabilidadAcumulada = 0.0;
+
+    for (var entry in transiciones.entries) {
+      probabilidadAcumulada += entry.value;
+      if (u <= probabilidadAcumulada) {
+        return EstadoPaciente.values
+            .firstWhere((e) => e.toString().split('.').last == entry.key);
+      }
+    }
+
+    return EstadoPaciente.dadoDeAlta;
+  }
+
   //Fin de la observasion
   void _procesarFinObservacion(Evento evento) {
     final paciente = evento.paciente!;
 
-    EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkov(
-        Config.matrizTransicionUrgencias, EstadoPaciente.enObservacion);
+    // RESOLUCIÓN DE CADENA DE MARKOV POST-OBSERVACIÓN
+    EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkovUrgencias(
+        paciente.triage!, EstadoPaciente.enObservacion);
 
     if (siguienteDestino == EstadoPaciente.hospitalizado) {
       paciente.requiereHospitalizacion = true;
@@ -525,6 +550,7 @@ class SimuladorHospital with ChangeNotifier {
           tiempo: reloj,
           paciente: paciente));
     } else {
+      // Fin del Caso 1: {alta}
       paciente.tiempoSalida = reloj;
       paciente.estado = EstadoPaciente.dadoDeAlta;
       _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);

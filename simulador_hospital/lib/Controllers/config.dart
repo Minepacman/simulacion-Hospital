@@ -1,13 +1,46 @@
 class Config {
-  static Map<String, Map<String, double>> matrizTransicionUrgencias = {
-    'enAtencion': {
-      'dadoDeAlta': 0.20,
-      'enObservacion': 0.55,
-      'hospitalizado': 0.25,
+  static Map<String, Map<String, Map<String, double>>> matricesMarkovUrgencias =
+      {
+    'reanimacionRojo': {
+      'enAtencion': {
+        'hospitalizado': 0.95,
+        'enObservacion': 0.05,
+        'dadoDeAlta': 0.0
+      },
+      'enObservacion': {'hospitalizado': 0.80, 'dadoDeAlta': 0.20}
     },
-    'enObservacion': {
-      'dadoDeAlta': 0.85, // se va uwu
-      'hospitalizado': 0.15, //valio queso y se queda en cama
+    'emergenciaNaranja': {
+      'enAtencion': {
+        'hospitalizado': 0.60,
+        'enObservacion': 0.35,
+        'dadoDeAlta': 0.05
+      },
+      'enObservacion': {'hospitalizado': 0.40, 'dadoDeAlta': 0.60}
+    },
+    'urgenciaAmarillo': {
+      'enAtencion': {
+        'enObservacion': 0.70,
+        'dadoDeAlta': 0.25,
+        'hospitalizado': 0.05
+      },
+      'enObservacion': {'dadoDeAlta': 0.90, 'hospitalizado': 0.10}
+    },
+    'urgenciaMenorVerde': {
+      'enAtencion': {
+        'dadoDeAlta': 0.85,
+        'enObservacion': 0.15,
+        'hospitalizado': 0.0
+      },
+      'enObservacion': {'dadoDeAlta': 0.99, 'hospitalizado': 0.01}
+    },
+    'sinUrgenciaAzul': {
+      // El ciclo directo corto: {llegada, triage, espera, consulta, alta}
+      'enAtencion': {
+        'dadoDeAlta': 1.0,
+        'enObservacion': 0.0,
+        'hospitalizado': 0.0
+      },
+      'enObservacion': {'dadoDeAlta': 1.0, 'hospitalizado': 0.0}
     }
   };
 
