@@ -1,0 +1,335 @@
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+
+import '../simulador_hospital.dart';
+import 'pantalla_configuracion.dart';
+
+class PantallaPrincipal extends StatefulWidget {
+  const PantallaPrincipal({super.key});
+
+  @override
+  State<PantallaPrincipal> createState() => _PantallaPrincipalState();
+}
+
+class _PantallaPrincipalState extends State<PantallaPrincipal> {
+  final SimuladorHospital _simulador = SimuladorHospital();
+
+  @override
+  void dispose() {
+    _simulador.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Simulador DES - Hospital',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings), // <-- BOTÓN DE CONFIGURACIÓN
+            onPressed: _simulador.simulacionEnCurso
+                ? null
+                : () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const PantallaConfiguracion()),
+                    );
+                  },
+            tooltip: 'Ajustar Parámetros',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _simulador.simulacionEnCurso
+                ? null
+                : () => _simulador.resetear(),
+            tooltip: 'Reiniciar Simulación',
+          ),
+        ],
+      ),
+      body: ListenableBuilder(
+        listenable: _simulador,
+        builder: (context, child) {
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildBotonSimular(),
+                const SizedBox(height: 24),
+                if (_simulador.simulacionEnCurso) ...[
+                  const Center(child: CircularProgressIndicator()),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Simulando minuto: ${_simulador.reloj.toStringAsFixed(0)} / 720',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w500),
+                  ),
+                ] else if (_simulador.simulacionCompletada) ...[
+                  _buildTarjetasResumen(),
+                  const SizedBox(height: 24),
+                  _buildSeccionGrafica(),
+                ] else ...[
+                  const Center(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(vertical: 40.0),
+                      child: Text(
+                        'Presiona "Iniciar Simulación" para comenzar.\nSe simularán 12 horas de operación (8:00 AM - 8:00 PM).',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildBotonSimular() {
+    return ElevatedButton.icon(
+      onPressed: _simulador.simulacionEnCurso
+          ? null
+          : () => _simulador.ejecutarSimulacion(),
+      icon: const Icon(Icons.play_arrow),
+      label: const Padding(
+        padding: EdgeInsets.all(12.0),
+        child: Text('Iniciar Simulación', style: TextStyle(fontSize: 16)),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      ),
+    );
+  }
+
+  Widget _buildTarjetasResumen() {
+    final m = _simulador.metricas;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+                child: _IndicadorMetrica(
+              titulo: 'Consulta Externa',
+              icono: Icons.medical_services_outlined,
+              color: Colors.blue,
+              datos: [
+                'Atendidos: ${m.pacientesAtendidosConsulta}',
+                'Espera Promedio: ${m.promedioEsperaConsulta.toStringAsFixed(1)} min',
+                'Cola Máxima: ${m.maximoColaConsulta}',
+                'Citas Perdidas: ${m.citasPerdidas}',
+                'Uso Médicos: ${(m.promedioUtilizacionMedicosConsulta * 100).toStringAsFixed(1)}%',
+              ],
+            )),
+            const SizedBox(width: 16),
+            Expanded(
+                child: _IndicadorMetrica(
+              titulo: 'Urgencias',
+              icono: Icons.local_hospital_outlined,
+              color: Colors.red,
+              datos: [
+                'Atendidos: ${m.pacientesAtendidosUrgencias}',
+                'Espera Promedio: ${m.promedioEsperaUrgencias.toStringAsFixed(1)} min',
+                'Cola Máxima: ${m.maximoColaUrgencias}',
+                'Hospitalizados: ${m.pacientesHospitalizados}',
+                'Uso Médicos: ${(m.promedioUtilizacionMedicosUrgencias * 100).toStringAsFixed(1)}%',
+              ],
+            )),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Card(
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.bed, color: Colors.green),
+                const SizedBox(width: 8),
+                Text(
+                  'Utilización Promedio de Camas: ${(m.promedioUtilizacionCamas * 100).toStringAsFixed(1)}%',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSeccionGrafica() {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Tamaño de Colas en el Tiempo',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Row(
+              children: [
+                _Leyenda(color: Colors.blue, texto: 'Consulta Externa'),
+                SizedBox(width: 16),
+                _Leyenda(color: Colors.red, texto: 'Urgencias'),
+              ],
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 250,
+              child: LineChart(
+                LineChartData(
+                  gridData: const FlGridData(show: true),
+                  titlesData: FlTitlesData(
+                    rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false)),
+                    bottomTitles: AxisTitles(
+                      axisNameWidget: const Text('Minutos de Simulación'),
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 30,
+                        getTitlesWidget: (value, meta) {
+                          if (value % 120 == 0) {
+                            return Text(value.toInt().toString());
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      axisNameWidget: const Text('Pacientes en Cola'),
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          if (value == value.toInt()) {
+                            return Text(value.toInt().toString());
+                          }
+                          return const SizedBox.shrink();
+                        },
+                      ),
+                    ),
+                  ),
+                  borderData: FlBorderData(
+                      show: true,
+                      border: Border.all(color: Colors.grey.shade300)),
+                  lineBarsData: [
+                    LineChartBarData(
+                      spots: _simulador.historialReloj
+                          .map((e) => FlSpot(
+                                e['tiempo'] as double,
+                                (e['colaConsulta'] as int).toDouble(),
+                              ))
+                          .toList(),
+                      isCurved: true,
+                      color: Colors.blue,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                          show: true, color: Colors.blue.withOpacity(0.1)),
+                    ),
+                    LineChartBarData(
+                      spots: _simulador.historialReloj
+                          .map((e) => FlSpot(
+                                e['tiempo'] as double,
+                                (e['colaUrgencias'] as int).toDouble(),
+                              ))
+                          .toList(),
+                      isCurved: true,
+                      color: Colors.red,
+                      dotData: const FlDotData(show: false),
+                      belowBarData: BarAreaData(
+                          show: true, color: Colors.red.withOpacity(0.1)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IndicadorMetrica extends StatelessWidget {
+  final String titulo;
+  final IconData icono;
+  final Color color;
+  final List<String> datos;
+
+  const _IndicadorMetrica({
+    required this.titulo,
+    required this.icono,
+    required this.color,
+    required this.datos,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icono, color: color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    titulo,
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: color),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(),
+            ...datos.map((dato) => Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(dato, style: const TextStyle(fontSize: 13)),
+                )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Leyenda extends StatelessWidget {
+  final Color color;
+  final String texto;
+
+  const _Leyenda({required this.color, required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(width: 12, height: 12, color: color),
+        const SizedBox(width: 4),
+        Text(texto, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+}
