@@ -14,6 +14,10 @@ class PantallaPrincipal extends StatefulWidget {
 class _PantallaPrincipalState extends State<PantallaPrincipal> {
   final SimuladorHospital _simulador = SimuladorHospital();
 
+  String _periodoSeleccionado = 'Días';
+  final TextEditingController _cantidadController =
+      TextEditingController(text: '1');
+
   @override
   void dispose() {
     _simulador.dispose();
@@ -63,7 +67,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   const Center(child: CircularProgressIndicator()),
                   const SizedBox(height: 16),
                   Text(
-                    'Simulando minuto: ${_simulador.reloj.toStringAsFixed(0)} / 720',
+                    'Simulando Día ${_simulador.diaActual} de ${_simulador.diasTotalesObjetivo}...',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w500),
@@ -93,17 +97,84 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   }
 
   Widget _buildBotonSimular() {
-    return ElevatedButton.icon(
-      onPressed: _simulador.simulacionEnCurso
-          ? null
-          : () => _simulador.ejecutarSimulacion(),
-      icon: const Icon(Icons.play_arrow),
-      label: const Padding(
-        padding: EdgeInsets.all(12.0),
-        child: Text('Iniciar Simulación', style: TextStyle(fontSize: 16)),
-      ),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+    return Card(
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            const Text(
+              'Configuración de la Ejecución',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: _cantidadController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Cantidad',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 3,
+                  child: DropdownButtonFormField<String>(
+                    value: _periodoSeleccionado,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['Días', 'Semanas', 'Meses', 'Años']
+                        .map((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value),
+                      );
+                    }).toList(),
+                    onChanged: _simulador.simulacionEnCurso
+                        ? null
+                        : (String? newValue) {
+                            setState(() {
+                              _periodoSeleccionado = newValue!;
+                            });
+                          },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _simulador.simulacionEnCurso
+                    ? null
+                    : () {
+                        int cantidad =
+                            int.tryParse(_cantidadController.text) ?? 1;
+                        if (cantidad <= 0) cantidad = 1;
+
+                        _simulador.ejecutarSimulacionPeriodo(
+                            _periodoSeleccionado, cantidad);
+                      },
+                icon: const Icon(Icons.play_arrow),
+                label: const Padding(
+                  padding: EdgeInsets.all(12.0),
+                  child: Text('Iniciar Simulación',
+                      style: TextStyle(fontSize: 16)),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor:
+                      Theme.of(context).colorScheme.primaryContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -125,7 +196,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                 'Espera Promedio: ${m.promedioEsperaConsulta.toStringAsFixed(1)} min',
                 'Cola Máxima: ${m.maximoColaConsulta}',
                 'Citas Perdidas: ${m.citasPerdidas}',
-                'Uso Médicos: ${(m.promedioUtilizacionMedicosConsulta * 100).toStringAsFixed(1)}%',
+                'Prob. Saturación: ${(m.probabilidadSaturacionConsulta * 100).toStringAsFixed(1)}%',
               ],
             )),
             const SizedBox(width: 16),
@@ -139,7 +210,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                 'Espera Promedio: ${m.promedioEsperaUrgencias.toStringAsFixed(1)} min',
                 'Cola Máxima: ${m.maximoColaUrgencias}',
                 'Hospitalizados: ${m.pacientesHospitalizados}',
-                'Uso Médicos: ${(m.promedioUtilizacionMedicosUrgencias * 100).toStringAsFixed(1)}%',
+                'Prob. Saturación: ${(m.probabilidadSaturacionUrgencias * 100).toStringAsFixed(1)}%',
               ],
             )),
           ],
@@ -149,16 +220,26 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           elevation: 2,
           child: Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Column(
               children: [
-                const Icon(Icons.bed, color: Colors.green),
-                const SizedBox(width: 8),
-                Text(
-                  'Utilización Promedio de Camas: ${(m.promedioUtilizacionCamas * 100).toStringAsFixed(1)}%',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.bed, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Uso Promedio de Camas: ${(m.promedioUtilizacionCamas * 100).toStringAsFixed(1)}%',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Saturación de Camas: ${(m.probabilidadSaturacionCamas * 100).toStringAsFixed(1)}% | Riesgo Global: ${(m.probabilidadSaturacionGlobal * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(
+                      color: Colors.red.shade700, fontWeight: FontWeight.w600),
+                )
               ],
             ),
           ),

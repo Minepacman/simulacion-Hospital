@@ -118,4 +118,35 @@ class Metricas {
     nuevas.citasPerdidas = citasPerdidas;
     return nuevas;
   }
+
+  double get probabilidadSaturacionConsulta {
+    if (utilizacionMedicosConsulta.isEmpty) return 0.0;
+    int snapshotsSaturados =
+        utilizacionMedicosConsulta.where((u) => u >= 1.0).length;
+    return snapshotsSaturados / utilizacionMedicosConsulta.length;
+  }
+
+  double get probabilidadSaturacionUrgencias {
+    if (utilizacionMedicosUrgencias.isEmpty) return 0.0;
+    int snapshotsSaturados =
+        utilizacionMedicosUrgencias.where((u) => u >= 1.0).length;
+    return snapshotsSaturados / utilizacionMedicosUrgencias.length;
+  }
+
+  double get probabilidadSaturacionCamas {
+    if (utilizacionCamas.isEmpty) return 0.0;
+    int snapshotsSaturados = utilizacionCamas.where((u) => u >= 1.0).length;
+    return snapshotsSaturados / utilizacionCamas.length;
+  }
+
+  double get probabilidadSaturacionGlobal {
+    if (utilizacionCamas.isEmpty) return 0.0;
+    int snapshotsSaturados = 0;
+    for (int i = 0; i < utilizacionCamas.length; i++) {
+      if (utilizacionMedicosUrgencias[i] >= 1.0 || utilizacionCamas[i] >= 1.0) {
+        snapshotsSaturados++;
+      }
+    }
+    return snapshotsSaturados / utilizacionCamas.length;
+  }
 }

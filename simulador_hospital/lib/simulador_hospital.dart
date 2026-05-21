@@ -12,16 +12,12 @@ import 'Controllers/generador_aleatorio.dart';
 class SimuladorHospital with ChangeNotifier {
   double reloj = 0.0;
 
+  int diaActual = 0;
+  int diasTotalesObjetivo = 0;
+
   final PriorityQueue<Evento> _eventosFuturos = PriorityQueue<Evento>();
 
   final Queue<Paciente> _colaConsulta = Queue<Paciente>();
-
-  final PriorityQueue<Paciente> _colaUrgencias =
-      PriorityQueue<Paciente>((a, b) {
-    int cmpGravedad = a.triage!.index.compareTo(b.triage!.index);
-    if (cmpGravedad != 0) return cmpGravedad;
-    return a.tiempoLlegada.compareTo(b.tiempoLlegada);
-  });
 
   late Recurso _medicosConsulta;
   late Recurso _medicosUrgencias;
@@ -48,6 +44,13 @@ class SimuladorHospital with ChangeNotifier {
   Recurso get medicosConsulta => _medicosConsulta;
   Recurso get medicosUrgencias => _medicosUrgencias;
   Recurso get camas => _camas;
+
+  final PriorityQueue<Paciente> _colaUrgencias =
+      PriorityQueue<Paciente>((a, b) {
+    int cmpGravedad = a.triage!.index.compareTo(b.triage!.index);
+    if (cmpGravedad != 0) return cmpGravedad;
+    return a.tiempoLlegada.compareTo(b.tiempoLlegada);
+  });
 
   SimuladorHospital() {
     _inicializar();
@@ -107,6 +110,100 @@ class SimuladorHospital with ChangeNotifier {
 
     _inicializar();
     notifyListeners();
+  }
+
+  Future<void> ejecutarSimulacionPeriodo(
+      String tipoPeriodo, int cantidad) async {
+    if (_simulacionEnCurso) return;
+
+    int diasTotales = 1;
+    switch (tipoPeriodo) {
+      case 'Días':
+        diasTotales = cantidad;
+        break;
+      case 'Semanas':
+        diasTotales = cantidad * 7;
+        break;
+      case 'Meses':
+        diasTotales = cantidad * 30;
+        break;
+      case 'Años':
+        diasTotales = cantidad * 365;
+        break;
+    }
+
+    _simulacionEnCurso = true;
+    _simulacionCompletada = false;
+    diasTotalesObjetivo = diasTotales;
+
+    List<Metricas> historialMetricas = [];
+
+    for (int i = 0; i < diasTotales; i++) {
+      diaActual = i + 1;
+
+      if (i % 10 == 0 || i == diasTotales - 1) {
+        notifyListeners();
+        await Future.delayed(const Duration(milliseconds: 10));
+      }
+
+      resetear();
+      _ejecutarUnDiaRapido();
+      historialMetricas.add(_metricas.clonar());
+    }
+
+    _consolidarMetricasGlobales(historialMetricas);
+
+    _simulacionEnCurso = false;
+    _simulacionCompletada = true;
+    notifyListeners();
+  }
+
+  void _ejecutarUnDiaRapido() {
+    _generarEventosIniciales();
+
+    while (_eventosFuturos.isNotEmpty && reloj < Config.minutosSimulacion) {
+      final evento = _eventosFuturos.removeFirst();
+      reloj = evento.tiempo;
+      _procesarEvento(evento);
+
+      if (reloj.floor() % 1 == 0) {
+        _registrarSnapshotMetricas();
+      }
+    }
+  }
+
+  void _consolidarMetricasGlobales(List<Metricas> historial) {
+    if (historial.isEmpty) return;
+
+    Metricas consolidado = Metricas();
+
+    for (var m in historial) {
+      consolidado.pacientesAtendidosConsulta += m.pacientesAtendidosConsulta;
+      consolidado.pacientesAtendidosUrgencias += m.pacientesAtendidosUrgencias;
+      consolidado.pacientesHospitalizados += m.pacientesHospitalizados;
+      consolidado.citasPerdidas += m.citasPerdidas;
+
+      consolidado.tiemposEsperaConsulta.addAll(m.tiemposEsperaConsulta);
+      consolidado.tiemposEsperaUrgencias.addAll(m.tiemposEsperaUrgencias);
+      consolidado.utilizacionMedicosConsulta
+          .addAll(m.utilizacionMedicosConsulta);
+      consolidado.utilizacionMedicosUrgencias
+          .addAll(m.utilizacionMedicosUrgencias);
+      consolidado.utilizacionCamas.addAll(m.utilizacionCamas);
+      consolidado.tamanosColaConsulta.addAll(m.tamanosColaConsulta);
+      consolidado.tamanosColaUrgencias.addAll(m.tamanosColaUrgencias);
+    }
+
+    int n = historial.length;
+    consolidado.pacientesAtendidosConsulta =
+        (consolidado.pacientesAtendidosConsulta / n).round();
+    consolidado.pacientesAtendidosUrgencias =
+        (consolidado.pacientesAtendidosUrgencias / n).round();
+    consolidado.pacientesHospitalizados =
+        (consolidado.pacientesHospitalizados / n).round();
+    consolidado.citasPerdidas = (consolidado.citasPerdidas / n).round();
+
+    _metricas = consolidado;
   }
 
   Future<void> ejecutarSimulacion() async {
@@ -334,8 +431,13 @@ class SimuladorHospital with ChangeNotifier {
     );
 
     paciente.requiereHospitalizacion = requiereHospitalizacion;
-
-    if (requiereHospitalizacion) {
+    if (paciente.triage == NivelTriage.sinUrgenciaAzul) {
+      paciente.tiempoSalida = reloj;
+      paciente.estado = EstadoPaciente.dadoDeAlta;
+      _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);
+      _intentarAsignarMedicoUrgencias();
+      return;
+    } else if (requiereHospitalizacion) {
       // se ingresa a hospitalizacion
       _eventosFuturos.add(Evento(
         tipo: TipoEvento.ingresoHospitalizacion,
