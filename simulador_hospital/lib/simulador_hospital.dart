@@ -9,6 +9,8 @@ import 'Controllers/recurso.dart';
 import 'Controllers/metricas.dart';
 import 'Controllers/generador_aleatorio.dart';
 
+
+
 class SimuladorHospital with ChangeNotifier {
   double reloj = 0.0;
 
@@ -503,10 +505,9 @@ class SimuladorHospital with ChangeNotifier {
     _intentarAsignarMedicoUrgencias();
   }
 
-  /// Evalúa la cadena de Markov basándose en el Triage específico del paciente
+  /// morkov por triage 
   EstadoPaciente _determinarSiguienteEstadoMarkovUrgencias(
       NivelTriage triage, EstadoPaciente estadoActual) {
-    // Convertir los enums a string para buscar en el mapa de configuración
     String claveTriage = triage.toString().split('.').last;
     String claveEstado = estadoActual.toString().split('.').last;
 
@@ -539,7 +540,6 @@ class SimuladorHospital with ChangeNotifier {
   void _procesarFinObservacion(Evento evento) {
     final paciente = evento.paciente!;
 
-    // RESOLUCIÓN DE CADENA DE MARKOV POST-OBSERVACIÓN
     EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkovUrgencias(
         paciente.triage!, EstadoPaciente.enObservacion);
 
@@ -550,7 +550,6 @@ class SimuladorHospital with ChangeNotifier {
           tiempo: reloj,
           paciente: paciente));
     } else {
-      // Fin del Caso 1: {alta}
       paciente.tiempoSalida = reloj;
       paciente.estado = EstadoPaciente.dadoDeAlta;
       _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);

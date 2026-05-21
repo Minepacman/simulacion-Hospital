@@ -29,11 +29,11 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Simulador DES - Hospital',
+        title: const Text('Simulador Hospital',
             style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings), // <-- BOTÓN DE CONFIGURACIÓN
+            icon: const Icon(Icons.settings), 
             onPressed: _simulador.simulacionEnCurso
                 ? null
                 : () {
