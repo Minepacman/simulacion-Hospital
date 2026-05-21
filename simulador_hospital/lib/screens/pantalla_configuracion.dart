@@ -42,6 +42,8 @@ class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
   final _azulController = TextEditingController(
       text: (Config.probabilidadesTriage[4] * 100).toStringAsFixed(1));
 
+  final _replicasController =
+      TextEditingController(text: Config.numeroReplicas.toString());
   @override
   void dispose() {
     _citasController.dispose();
@@ -68,7 +70,7 @@ class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
       final pAmarillo = double.parse(_amarilloController.text);
       final pVerde = double.parse(_verdeController.text);
       final pAzul = double.parse(_azulController.text);
-
+      Config.numeroReplicas = int.parse(_replicasController.text);
       final sumaTotal = pRojo + pNaranja + pAmarillo + pVerde + pAzul;
 
       if ((sumaTotal - 100.0).abs() > 0.01) {
@@ -134,6 +136,11 @@ class _PantallaConfiguracionState extends State<PantallaConfiguracion> {
                 color: Colors.blue,
                 icon: Icons.medical_services,
                 children: [
+                  _buildInputField(
+                    label: 'Número de Réplicas (Intervalo Confianza)',
+                    controller: _replicasController,
+                    isInteger: true,
+                  ),
                   _buildInputField(
                     label: 'Citas programadas por día',
                     controller: _citasController,

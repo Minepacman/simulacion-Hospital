@@ -45,6 +45,9 @@ class SimuladorHospital with ChangeNotifier {
   Recurso get medicosUrgencias => _medicosUrgencias;
   Recurso get camas => _camas;
 
+  int replicaActual = 0;
+  Map<String, IntervaloConfianza> intervalos = {};
+
   final PriorityQueue<Paciente> _colaUrgencias =
       PriorityQueue<Paciente>((a, b) {
     int cmpGravedad = a.triage!.index.compareTo(b.triage!.index);
@@ -67,6 +70,30 @@ class SimuladorHospital with ChangeNotifier {
       }
     }
     return NivelTriage.sinUrgenciaAzul;
+  }
+
+  EstadoPaciente _determinarSiguienteEstadoMarkov(
+      Map<String, Map<String, double>> matriz, EstadoPaciente estadoActual) {
+    String claveEstado = estadoActual.toString().split('.').last;
+
+    if (!matriz.containsKey(claveEstado)) {
+      return EstadoPaciente.dadoDeAlta;
+    }
+
+    Map<String, double> transiciones = matriz[claveEstado]!;
+
+    double u = _rng.siguiente();
+    double probabilidadAcumulada = 0.0;
+
+    for (var entry in transiciones.entries) {
+      probabilidadAcumulada += entry.value;
+      if (u <= probabilidadAcumulada) {
+        return EstadoPaciente.values
+            .firstWhere((e) => e.toString().split('.').last == entry.key);
+      }
+    }
+
+    return EstadoPaciente.dadoDeAlta;
   }
 
   void _inicializar() {
@@ -136,22 +163,29 @@ class SimuladorHospital with ChangeNotifier {
     _simulacionCompletada = false;
     diasTotalesObjetivo = diasTotales;
 
-    List<Metricas> historialMetricas = [];
+    List<Metricas> resultadosReplicas = [];
 
-    for (int i = 0; i < diasTotales; i++) {
-      diaActual = i + 1;
+    for (int r = 0; r < Config.numeroReplicas; r++) {
+      replicaActual = r + 1;
+      List<Metricas> historialDias = [];
 
-      if (i % 10 == 0 || i == diasTotales - 1) {
-        notifyListeners();
-        await Future.delayed(const Duration(milliseconds: 10));
+      for (int i = 0; i < diasTotales; i++) {
+        diaActual = i + 1;
+
+        if (i % 10 == 0 || i == diasTotales - 1) {
+          notifyListeners();
+          await Future.delayed(const Duration(milliseconds: 1));
+        }
+
+        resetear();
+        _ejecutarUnDiaRapido();
+        historialDias.add(_metricas.clonar());
       }
 
-      resetear();
-      _ejecutarUnDiaRapido();
-      historialMetricas.add(_metricas.clonar());
+      resultadosReplicas.add(_consolidarDias(historialDias));
     }
 
-    _consolidarMetricasGlobales(historialMetricas);
+    _calcularEstadisticasFinales(resultadosReplicas);
 
     _simulacionEnCurso = false;
     _simulacionCompletada = true;
@@ -172,10 +206,9 @@ class SimuladorHospital with ChangeNotifier {
     }
   }
 
-  void _consolidarMetricasGlobales(List<Metricas> historial) {
-    if (historial.isEmpty) return;
-
+  Metricas _consolidarDias(List<Metricas> historial) {
     Metricas consolidado = Metricas();
+    if (historial.isEmpty) return consolidado;
 
     for (var m in historial) {
       consolidado.pacientesAtendidosConsulta += m.pacientesAtendidosConsulta;
@@ -203,7 +236,28 @@ class SimuladorHospital with ChangeNotifier {
         (consolidado.pacientesHospitalizados / n).round();
     consolidado.citasPerdidas = (consolidado.citasPerdidas / n).round();
 
-    _metricas = consolidado;
+    return consolidado;
+  }
+
+  void _calcularEstadisticasFinales(List<Metricas> replicas) {
+    _metricas = _consolidarDias(replicas);
+
+    intervalos['esperaConsulta'] = Estadisticas.calcularCI(
+        replicas.map((m) => m.promedioEsperaConsulta).toList());
+    intervalos['esperaUrgencias'] = Estadisticas.calcularCI(
+        replicas.map((m) => m.promedioEsperaUrgencias).toList());
+    intervalos['usoConsulta'] = Estadisticas.calcularCI(replicas
+        .map((m) => m.promedioUtilizacionMedicosConsulta * 100)
+        .toList());
+    intervalos['usoUrgencias'] = Estadisticas.calcularCI(replicas
+        .map((m) => m.promedioUtilizacionMedicosUrgencias * 100)
+        .toList());
+    intervalos['usoCamas'] = Estadisticas.calcularCI(
+        replicas.map((m) => m.promedioUtilizacionCamas * 100).toList());
+    intervalos['satCamas'] = Estadisticas.calcularCI(
+        replicas.map((m) => m.probabilidadSaturacionCamas * 100).toList());
+    intervalos['satGlobal'] = Estadisticas.calcularCI(
+        replicas.map((m) => m.probabilidadSaturacionGlobal * 100).toList());
   }
 
   Future<void> ejecutarSimulacion() async {
@@ -419,46 +473,41 @@ class SimuladorHospital with ChangeNotifier {
 
   void _procesarFinUrgencia(Evento evento) {
     final paciente = evento.paciente!;
-
     _medicosUrgencias.liberar();
-
     paciente.tiempoFinAtencion = reloj;
-
     _metricas.pacientesAtendidosUrgencias++;
 
-    bool requiereHospitalizacion = _rng.booleanoConProbabilidad(
-      Config.probUrgenciaAHospitalizacion,
-    );
-
-    paciente.requiereHospitalizacion = requiereHospitalizacion;
     if (paciente.triage == NivelTriage.sinUrgenciaAzul) {
       paciente.tiempoSalida = reloj;
       paciente.estado = EstadoPaciente.dadoDeAlta;
       _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);
       _intentarAsignarMedicoUrgencias();
       return;
-    } else if (requiereHospitalizacion) {
-      // se ingresa a hospitalizacion
-      _eventosFuturos.add(Evento(
-        tipo: TipoEvento.ingresoHospitalizacion,
-        tiempo: reloj,
-        paciente: paciente,
-      ));
-    } else {
-      // observacion
-      paciente.estado = EstadoPaciente.enObservacion;
-
-      double duracionObservacion = _rng.exponencial(
-        1.0 / Config.tiempoPromedioObservacion,
-      );
-
-      _eventosFuturos.add(Evento(
-        tipo: TipoEvento.finObservacion,
-        tiempo: reloj + duracionObservacion,
-        paciente: paciente,
-      ));
     }
-    // si se puede atiende al siguiente
+
+    EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkov(
+        Config.matrizTransicionUrgencias, EstadoPaciente.enAtencion);
+
+    if (siguienteDestino == EstadoPaciente.hospitalizado) {
+      paciente.requiereHospitalizacion = true;
+      _eventosFuturos.add(Evento(
+          tipo: TipoEvento.ingresoHospitalizacion,
+          tiempo: reloj,
+          paciente: paciente));
+    } else if (siguienteDestino == EstadoPaciente.enObservacion) {
+      paciente.estado = EstadoPaciente.enObservacion;
+      double duracionObservacion =
+          _rng.exponencial(1.0 / Config.tiempoPromedioObservacion);
+      _eventosFuturos.add(Evento(
+          tipo: TipoEvento.finObservacion,
+          tiempo: reloj + duracionObservacion,
+          paciente: paciente));
+    } else {
+      paciente.tiempoSalida = reloj;
+      paciente.estado = EstadoPaciente.dadoDeAlta;
+      _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);
+    }
+
     _intentarAsignarMedicoUrgencias();
   }
 
@@ -466,10 +515,20 @@ class SimuladorHospital with ChangeNotifier {
   void _procesarFinObservacion(Evento evento) {
     final paciente = evento.paciente!;
 
-    paciente.tiempoSalida = reloj;
-    paciente.estado = EstadoPaciente.dadoDeAlta;
+    EstadoPaciente siguienteDestino = _determinarSiguienteEstadoMarkov(
+        Config.matrizTransicionUrgencias, EstadoPaciente.enObservacion);
 
-    _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);
+    if (siguienteDestino == EstadoPaciente.hospitalizado) {
+      paciente.requiereHospitalizacion = true;
+      _eventosFuturos.add(Evento(
+          tipo: TipoEvento.ingresoHospitalizacion,
+          tiempo: reloj,
+          paciente: paciente));
+    } else {
+      paciente.tiempoSalida = reloj;
+      paciente.estado = EstadoPaciente.dadoDeAlta;
+      _metricas.tiemposTotalesUrgencias.add(paciente.tiempoEnSistema);
+    }
   }
 
   // hospitalizacion

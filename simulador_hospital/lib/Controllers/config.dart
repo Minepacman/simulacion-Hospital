@@ -1,4 +1,23 @@
 class Config {
+  static Map<String, Map<String, double>> matrizTransicionUrgencias = {
+    'enAtencion': {
+      'dadoDeAlta': 0.20,
+      'enObservacion': 0.55,
+      'hospitalizado': 0.25,
+    },
+    'enObservacion': {
+      'dadoDeAlta': 0.85, // se va uwu
+      'hospitalizado': 0.15, //valio queso y se queda en cama
+    }
+  };
+
+  static Map<String, Map<String, double>> matrizTransicionConsulta = {
+    'enAtencion': {
+      'dadoDeAlta': 0.95,
+      'hospitalizado': 0.05,
+    }
+  };
+
   static int horaInicio = 8 * 60;
   static int horaFin = 20 * 60;
   static int minutosSimulacion = horaFin - horaInicio;

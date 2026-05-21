@@ -1,5 +1,36 @@
 import 'dart:math' as math;
 
+class IntervaloConfianza {
+  final double media;
+  final double margenError;
+
+  IntervaloConfianza(this.media, this.margenError);
+
+  @override
+  String toString() =>
+      '${media.toStringAsFixed(1)} ± ${margenError.toStringAsFixed(2)}';
+}
+
+class Estadisticas {
+  static IntervaloConfianza calcularCI(List<double> datos, {double z = 1.96}) {
+    if (datos.isEmpty) return IntervaloConfianza(0.0, 0.0);
+    if (datos.length == 1) return IntervaloConfianza(datos.first, 0.0);
+
+    double media = datos.reduce((a, b) => a + b) / datos.length;
+
+    double sumaVariaciones = 0;
+    for (double x in datos) {
+      sumaVariaciones += math.pow(x - media, 2);
+    }
+    double varianza = sumaVariaciones / (datos.length - 1);
+    double desviacionEstandar = math.sqrt(varianza);
+
+    double margenError = z * (desviacionEstandar / math.sqrt(datos.length));
+
+    return IntervaloConfianza(media, margenError);
+  }
+}
+
 class Metricas {
   List<double> tiemposEsperaConsulta = [];
   List<double> tiemposEsperaUrgencias = [];

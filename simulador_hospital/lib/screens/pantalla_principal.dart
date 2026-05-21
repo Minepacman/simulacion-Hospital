@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:hospital_simulator/Controllers/config.dart';
 
 import '../simulador_hospital.dart';
 import 'pantalla_configuracion.dart';
@@ -67,7 +68,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   const Center(child: CircularProgressIndicator()),
                   const SizedBox(height: 16),
                   Text(
-                    'Simulando Día ${_simulador.diaActual} de ${_simulador.diasTotalesObjetivo}...',
+                    'Réplica ${_simulador.replicaActual} de ${Config.numeroReplicas}...\nSimulando Día ${_simulador.diaActual} de ${_simulador.diasTotalesObjetivo}',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w500),
@@ -181,6 +182,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
 
   Widget _buildTarjetasResumen() {
     final m = _simulador.metricas;
+    final intervalos =
+        _simulador.intervalos; // Extraemos los intervalos calculados
 
     return Column(
       children: [
@@ -188,29 +191,27 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
           children: [
             Expanded(
                 child: _IndicadorMetrica(
-              titulo: 'Consulta Externa',
+              titulo: 'Consulta Externa (IC 95%)',
               icono: Icons.medical_services_outlined,
               color: Colors.blue,
               datos: [
-                'Atendidos: ${m.pacientesAtendidosConsulta}',
-                'Espera Promedio: ${m.promedioEsperaConsulta.toStringAsFixed(1)} min',
+                'Atendidos/día: ${m.pacientesAtendidosConsulta}',
+                'Espera: ${intervalos['esperaConsulta']} min',
                 'Cola Máxima: ${m.maximoColaConsulta}',
-                'Citas Perdidas: ${m.citasPerdidas}',
-                'Prob. Saturación: ${(m.probabilidadSaturacionConsulta * 100).toStringAsFixed(1)}%',
+                'Uso Médicos: ${intervalos['usoConsulta']}%',
               ],
             )),
             const SizedBox(width: 16),
             Expanded(
                 child: _IndicadorMetrica(
-              titulo: 'Urgencias',
+              titulo: 'Urgencias (IC 95%)',
               icono: Icons.local_hospital_outlined,
               color: Colors.red,
               datos: [
-                'Atendidos: ${m.pacientesAtendidosUrgencias}',
-                'Espera Promedio: ${m.promedioEsperaUrgencias.toStringAsFixed(1)} min',
+                'Atendidos/día: ${m.pacientesAtendidosUrgencias}',
+                'Espera: ${intervalos['esperaUrgencias']} min',
                 'Cola Máxima: ${m.maximoColaUrgencias}',
-                'Hospitalizados: ${m.pacientesHospitalizados}',
-                'Prob. Saturación: ${(m.probabilidadSaturacionUrgencias * 100).toStringAsFixed(1)}%',
+                'Uso Médicos: ${intervalos['usoUrgencias']}%',
               ],
             )),
           ],
@@ -228,7 +229,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                     const Icon(Icons.bed, color: Colors.green),
                     const SizedBox(width: 8),
                     Text(
-                      'Uso Promedio de Camas: ${(m.promedioUtilizacionCamas * 100).toStringAsFixed(1)}%',
+                      'Uso de Camas: ${intervalos['usoCamas']}%',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16),
                     ),
@@ -236,7 +237,7 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Saturación de Camas: ${(m.probabilidadSaturacionCamas * 100).toStringAsFixed(1)}% | Riesgo Global: ${(m.probabilidadSaturacionGlobal * 100).toStringAsFixed(1)}%',
+                  'Saturación de Camas: ${intervalos['satCamas']}% | Riesgo Global: ${intervalos['satGlobal']}%',
                   style: TextStyle(
                       color: Colors.red.shade700, fontWeight: FontWeight.w600),
                 )
