@@ -34,7 +34,7 @@ class Config {
       'enObservacion': {'dadoDeAlta': 0.99, 'hospitalizado': 0.01}
     },
     'sinUrgenciaAzul': {
-      // El ciclo directo corto: {llegada, triage, espera, consulta, alta}
+
       'enAtencion': {
         'dadoDeAlta': 1.0,
         'enObservacion': 0.0,
@@ -42,6 +42,7 @@ class Config {
       },
       'enObservacion': {'dadoDeAlta': 1.0, 'hospitalizado': 0.0}
     }
+    
   };
 
   static Map<String, Map<String, double>> matrizTransicionConsulta = {

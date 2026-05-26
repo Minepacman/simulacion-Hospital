@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/pantalla_principal.dart';
+import 'UI/pantalla_principal.dart';
 
 void main() {
   // Bloquear orientación a portrait

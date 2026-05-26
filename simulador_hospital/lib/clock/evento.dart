@@ -1,4 +1,4 @@
-import 'paciente.dart';
+import '/StateManagement/paciente.dart';
 
 /// Tipos de eventos en el sistema
 enum TipoEvento {

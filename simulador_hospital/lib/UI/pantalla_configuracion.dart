@@ -1,6 +1,6 @@
 // lib/screens/pantalla_configuracion.dart
 import 'package:flutter/material.dart';
-import '../Controllers/config.dart';
+import '../DataProvider/config.dart';
 
 class PantallaConfiguracion extends StatefulWidget {
   const PantallaConfiguracion({super.key});

@@ -34,11 +34,11 @@ class Paciente {
 
   EstadoPaciente estado = EstadoPaciente.enEspera;
 
-  // Para consulta externa
+  // para consulta externa
   double? horaCitaProgramada;
   double? retrasoReal;
 
-  // Para urgencias
+  // para urgencias
   bool? requiereHospitalizacion;
 
   NivelTriage? triage;
