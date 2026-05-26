@@ -4,6 +4,7 @@ import '../DataProvider/config.dart';
 import '../StateManagement/estado_hospital.dart';
 import '../vizualizroengine/grafica_colas.dart';
 import 'pantalla_configuracion.dart';
+import 'pantalla_historial_pacientes.dart'; 
 
 class PantallaPrincipal extends StatefulWidget {
   const PantallaPrincipal({super.key});
@@ -71,9 +72,34 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                 ] else if (_estado.simulacionCompletada) ...[
                   _buildTarjetasResumen(),
                   const SizedBox(height: 24),
-                  
-                  // Llamada directa al Vizualization Engine aislado
+
                   GraficaColas(historial: _estado.historialReloj),
+
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      if (_estado.simulacionIdActual != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PantallaHistorialPacientes(
+                              simulacionId: _estado.simulacionIdActual!,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.table_view),
+                    label: const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.0),
+                      child: Text('Ver Registros de Pacientes', style: TextStyle(fontSize: 16)),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue.shade50,
+                      foregroundColor: Colors.blue.shade900,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   
                 ] else ...[
                   const Center(
@@ -174,6 +200,12 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
     final m = _estado.metricas;
     final intervalos = _estado.intervalos;
 
+    double tasaMortalidad = 0.0;
+    int totalAtendidosYFallecidos = m.pacientesAtendidosUrgencias + m.totalFallecidos;
+    if (totalAtendidosYFallecidos > 0) {
+      tasaMortalidad = (m.totalFallecidos / totalAtendidosYFallecidos) * 100;
+    }
+
     return Column(
       children: [
         Row(
@@ -202,6 +234,8 @@ class _PantallaPrincipalState extends State<PantallaPrincipal> {
                   'Espera: ${intervalos['esperaUrgencias']} min',
                   'Cola Máxima: ${m.maximoColaUrgencias}',
                   'Uso Médicos: ${intervalos['usoUrgencias']}%',
+                  // NUEVA LÍNEA DE MORTALIDAD:
+                  'Fallecidos: ${m.totalFallecidos} (${tasaMortalidad.toStringAsFixed(1)}%)', 
                 ],
               ),
             ),

@@ -6,6 +6,7 @@ import '../clock/planificador_eventos.dart';
 import 'paciente.dart';
 import 'recurso.dart';
 import 'metricas.dart';
+import '../DataProvider/db_helper.dart';
 
 class EstadoHospital with ChangeNotifier {
   double reloj = 0.0;
@@ -19,8 +20,13 @@ class EstadoHospital with ChangeNotifier {
   // Estructuras de datos puras de estado
   final Queue<Paciente> colaConsulta = Queue<Paciente>();
   final PriorityQueue<Paciente> colaUrgencias = PriorityQueue<Paciente>((a, b) {
-    int cmpGravedad = a.triage!.index.compareTo(b.triage!.index);
+    // Fíjate que usamos '?' y no '!'
+    int indexA = a.triage?.index ?? 4; 
+    int indexB = b.triage?.index ?? 4;
+
+    int cmpGravedad = indexA.compareTo(indexB);
     if (cmpGravedad != 0) return cmpGravedad;
+    
     return a.tiempoLlegada.compareTo(b.tiempoLlegada);
   });
 
@@ -33,6 +39,53 @@ class EstadoHospital with ChangeNotifier {
   Map<String, IntervaloConfianza> intervalos = {};
 
   int contadorPacientes = 0;
+
+  int? simulacionIdActual;
+  List<Map<String, dynamic>> _pacientesBuffer = [];
+  List<Map<String, dynamic>> _snapshotsBuffer = [];
+
+  void registrarPacienteCompletado(Paciente paciente) {
+    if (simulacionIdActual != null) {
+      _pacientesBuffer.add(paciente.toMap(simulacionIdActual!));
+    }
+  }
+
+  Recurso? getRecursoPorNombre(String? nombreRecurso) {
+    if (nombreRecurso == 'medicosConsulta') return medicosConsulta;
+    if (nombreRecurso == 'medicosUrgencias') return medicosUrgencias;
+    if (nombreRecurso == 'camas') return camas;
+    return null;
+  }
+
+  void encolarPaciente(String? nombreRecurso, Paciente paciente) {
+    if (nombreRecurso == 'medicosConsulta') {
+      colaConsulta.add(paciente);
+    } else {
+      // Urgencias, Hospitalización o nuevas áreas usan la cola de prioridad
+      colaUrgencias.add(paciente);
+    }
+    notifyListeners();
+  }
+
+  bool tienePacientesEnCola(String? nombreRecurso) {
+    if (nombreRecurso == 'medicosConsulta') return colaConsulta.isNotEmpty;
+    return colaUrgencias.isNotEmpty;
+  }
+
+  Paciente desencolarSiguiente(String? nombreRecurso) {
+    final Paciente paciente;
+    if (nombreRecurso == 'medicosConsulta') {
+      paciente = colaConsulta.removeFirst();
+    } else {
+      paciente = colaUrgencias.removeFirst();
+    }
+    notifyListeners();
+    return paciente;
+  }
+
+  // =====================================================================
+  // LÓGICA DE SIMULACIÓN Y CICLO DE VIDA
+  // =====================================================================
 
   void inicializarRecursos() {
     reloj = 0.0;
@@ -64,9 +117,19 @@ class EstadoHospital with ChangeNotifier {
 
     historialReloj.add({
       'tiempo': reloj,
-      'colaConsulta': colaConsulta.length,
-      'colaUrgencias': colaUrgencias.length,
+      'medicosConsulta': colaConsulta.length,
+      'medicosUrgencias': colaUrgencias.length,
     });
+
+    if (simulacionIdActual != null) {
+      _snapshotsBuffer.add({
+        'simulacion_id': simulacionIdActual,
+        'minuto': reloj.floor(),
+        'cola_consulta': colaConsulta.length,
+        'cola_urgencias': colaUrgencias.length,
+        'uso_camas': camas.utilizacion,
+      });
+    }
   }
 
   Future<void> ejecutarSimulacionPeriodo(String tipoPeriodo, int cantidad) async {
@@ -82,6 +145,15 @@ class EstadoHospital with ChangeNotifier {
     simulacionCompletada = false;
     diasTotalesObjetivo = diasTotales;
 
+    // 1. INICIALIZAR BASE DE DATOS: Creamos el registro de la simulación
+    _pacientesBuffer.clear();
+    _snapshotsBuffer.clear();
+    simulacionIdActual = await DBHelper().insertarSimulacion(
+      diasTotales, 
+      {'tipo_periodo': tipoPeriodo, 'cantidad': cantidad}, // Guardamos info básica de config
+      0 // Actualizaremos el total al final
+    );
+
     List<Metricas> resultadosReplicas = [];
     final planificador = PlanificadorEventos(this);
 
@@ -93,22 +165,41 @@ class EstadoHospital with ChangeNotifier {
         diaActual = i + 1;
 
         if (i % 10 == 0 || i == diasTotales - 1) {
-          notifyListeners(); // Refresh Display
+          notifyListeners();
           await Future.delayed(const Duration(milliseconds: 1));
         }
 
         planificador.limpiar();
-        inicializarRecursos();
+        inicializarRecursosParaNuevoDia();
         planificador.ejecutarDia(Config.minutosSimulacion.toDouble());
         historialDias.add(metricas.clonar());
+
+        // 2. OPTIMIZACIÓN DE MEMORIA: Si los buffers son muy grandes, los volcamos a la BD
+        if (_pacientesBuffer.length > 5000) {
+          await DBHelper().insertarPacientesBatch(simulacionIdActual!, List.from(_pacientesBuffer));
+          _pacientesBuffer.clear();
+        }
+        if (_snapshotsBuffer.length > 5000) {
+          await DBHelper().insertarSnapshotsBatch(simulacionIdActual!, List.from(_snapshotsBuffer));
+          _snapshotsBuffer.clear();
+        }
       }
       resultadosReplicas.add(_consolidarDias(historialDias));
     }
 
     _calcularEstadisticasFinales(resultadosReplicas);
+
+    // 3. FINALIZAR: Guardar los restos que quedaron en el buffer
+    if (_pacientesBuffer.isNotEmpty) {
+      await DBHelper().insertarPacientesBatch(simulacionIdActual!, _pacientesBuffer);
+    }
+    if (_snapshotsBuffer.isNotEmpty) {
+      await DBHelper().insertarSnapshotsBatch(simulacionIdActual!, _snapshotsBuffer);
+    }
+
     simulacionEnCurso = false;
     simulacionCompletada = true;
-    notifyListeners(); // Render final de resultados
+    notifyListeners();
   }
 
   Metricas _consolidarDias(List<Metricas> historial) {
@@ -142,5 +233,18 @@ class EstadoHospital with ChangeNotifier {
     intervalos['usoCamas'] = Estadisticas.calcularCI(replicas.map((m) => m.promedioUtilizacionCamas * 100).toList());
     intervalos['satCamas'] = Estadisticas.calcularCI(replicas.map((m) => m.probabilidadSaturacionCamas * 100).toList());
     intervalos['satGlobal'] = Estadisticas.calcularCI(replicas.map((m) => m.probabilidadSaturacionGlobal * 100).toList());
+  }
+
+  void inicializarRecursosParaNuevoDia() {
+    reloj = 0.0;
+    colaConsulta.clear(); 
+
+    medicosConsulta = Recurso(nombre: 'Médicos Consulta', capacidadTotal: Config.numeroMedicosConsulta);
+    medicosUrgencias = Recurso(nombre: 'Médicos Urgencias', capacidadTotal: Config.numeroMedicosUrgencias);
+    if (diaActual == 1) {
+      camas = Recurso(nombre: 'Camas', capacidadTotal: Config.numeroCamas);
+    }
+
+    historialReloj.clear();
   }
 }

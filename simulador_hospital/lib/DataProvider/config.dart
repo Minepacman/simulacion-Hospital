@@ -1,4 +1,52 @@
+import '../simulationEngine/nodo_servicio.dart';
+import '../simulationEngine/generador_aleatorio.dart';
+
 class Config {
+
+  static Map<String, NodoServicio> get grafoHospital => {
+    'consultaExterna': NodoServicio(
+      identificador: 'consultaExterna',
+      recursoAsociado: 'medicosConsulta',
+      generadorTiempoAtencion: (rng) => rng.exponencial(1.0 / tiempoPromedioConsulta),
+      transicionesMarkov: {
+        'dadoDeAlta': 1.0 - probUrgenciaAHospitalizacion, 
+        'hospitalizacion': probUrgenciaAHospitalizacion
+      },
+    ),
+    'urgenciasAtencion': NodoServicio(
+      identificador: 'urgenciasAtencion',
+      recursoAsociado: 'medicosUrgencias',
+      generadorTiempoAtencion: (rng) => rng.exponencial(1.0 / tiempoPromedioUrgencia),
+      transicionesMarkov: {
+        'enObservacion': 0.70, 
+        'dadoDeAlta': 0.30 - probUrgenciaAHospitalizacion, 
+        'hospitalizacion': probUrgenciaAHospitalizacion
+      }, 
+    ),
+    
+    // =========================================================
+    // ¡ESTE ES EL NODO FALTANTE QUE CAUSABA EL CRASH!
+    // =========================================================
+    'enObservacion': NodoServicio(
+      identificador: 'enObservacion',
+      // Null porque estar en observación no retiene a un médico activamente
+      recursoAsociado: null, 
+      // Si tienes una variable tiempoPromedioObservacion úsala, si no, pon 120.0
+      generadorTiempoAtencion: (rng) => rng.exponencial(1.0 / 120.0), 
+      transicionesMarkov: {
+        'dadoDeAlta': 1.0 - probUrgenciaAHospitalizacion,
+        'hospitalizacion': probUrgenciaAHospitalizacion
+      },
+    ),
+    // =========================================================
+
+    'hospitalizacion': NodoServicio(
+      identificador: 'hospitalizacion',
+      recursoAsociado: 'camas',
+      generadorTiempoAtencion: (rng) => rng.exponencial(1.0 / tiempoPromedioHospitalizacion),
+      transicionesMarkov: {'dadoDeAlta': 1.0},
+    ),
+  };
   static Map<String, Map<String, Map<String, double>>> matricesMarkovUrgencias =
       {
     'reanimacionRojo': {
@@ -54,7 +102,7 @@ class Config {
 
   static int horaInicio = 8 * 60;
   static int horaFin = 20 * 60;
-  static int minutosSimulacion = horaFin - horaInicio;
+  static int minutosSimulacion = 720;
 
   // Consulta Externa
   static int citasProgramadasPorDia = 40;

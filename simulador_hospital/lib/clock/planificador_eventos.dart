@@ -1,10 +1,11 @@
+// lib/clock/planificador_eventos.dart
 import 'package:collection/collection.dart';
 import '../StateManagement/estado_hospital.dart';
 import '../simulationEngine/motor_simulacion.dart';
-import 'evento.dart';
+import '../simulationEngine/evento_simulacion.dart'; 
 
 class PlanificadorEventos {
-  final PriorityQueue<Evento> eventosFuturos = PriorityQueue<Evento>();
+  final PriorityQueue<EventoSimulacion> eventosFuturos = PriorityQueue<EventoSimulacion>();
   final EstadoHospital estado;
   late final MotorSimulacion motor;
 
@@ -12,7 +13,7 @@ class PlanificadorEventos {
     motor = MotorSimulacion(estado, this);
   }
 
-  void programarEvento(Evento evento) {
+  void programarEvento(EventoSimulacion evento) {
     eventosFuturos.add(evento);
   }
 
@@ -20,21 +21,22 @@ class PlanificadorEventos {
     eventosFuturos.clear();
   }
 
-  /// Ejecuta el bucle de eventos para un único día lógico
   void ejecutarDia(double minutosMaximos) {
     motor.generarEventosIniciales();
+    
+    // Rastreador para evitar guardar miles de snapshots innecesarios
+    int ultimoMinutoRegistrado = -1;
 
     while (eventosFuturos.isNotEmpty && estado.reloj < minutosMaximos) {
       final evento = eventosFuturos.removeFirst();
       
-      // Sincronizar Ejecución (Paso 4 del diagrama)
       estado.actualizarReloj(evento.tiempo);
-      
-      // El motor procesa el comportamiento lógico del evento
-      motor.procesarEvento(evento);
+      evento.ejecutar(estado, this, motor.rng);
 
-      // Muestreo discreto de métricas cada minuto entero
-      if (estado.reloj.floor() % 1 == 0) {
+      // SOLUCIÓN: Solo guardamos snapshot si realmente avanzamos de minuto
+      int minutoActual = estado.reloj.floor();
+      if (minutoActual > ultimoMinutoRegistrado) {
+        ultimoMinutoRegistrado = minutoActual;
         estado.registrarSnapshot();
       }
     }
